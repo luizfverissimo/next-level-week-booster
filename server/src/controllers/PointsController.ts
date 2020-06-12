@@ -1,44 +1,56 @@
-import {Request, Response} from 'express'
-import knex from "../database/connections"
+import { Request, Response } from "express";
+import knex from "../database/connections";
 
 class PointsController {
-  async index(request: Request, response: Response){
+  async index(request: Request, response: Response) {
     //filtros: cidade, uf, items - (query params)
 
-    const {city, uf, items} = request.query
+    const { city, uf, items } = request.query;
     const paresedItems = String(items)
-      .split(',')
-      .map(item => Number(item.trim()))
+      .split(",")
+      .map((item) => Number(item.trim()));
 
-    const points = await knex('points')
-      .join('point_items', 'points.id', '=', 'point_items.point_id')
-      .whereIn('point_items.item_id', paresedItems)
-      .where('city', String(city))
-      .where('uf', String(uf))
+    const points = await knex("points")
+      .join("point_items", "points.id", "=", "point_items.point_id")
+      .whereIn("point_items.item_id", paresedItems)
+      .where("city", String(city))
+      .where("uf", String(uf))
       .distinct()
-      .select('points.*')
+      .select("points.*");
 
-    return response.json(points)
+    const serializedPoints = points.map((point) => {
+      return {
+        ...point,
+        image_url: `http://192.168.1.9:3333/uploads/${point.image}`,
+      };
+    });
+
+    return response.json(serializedPoints);
   }
 
-  async show(request: Request, response: Response){
-    const { id } = request.params
+  async show(request: Request, response: Response) {
+    const { id } = request.params;
 
-    const point = await knex('points').where('id', id).first()
+    const point = await knex("points").where("id", id).first();
 
-    if(!point){
-      return response.status(400).json({message: "Point not found."})
+    if (!point) {
+      return response.status(400).json({ message: "Point not found." });
     }
 
-    const items = await knex('items')
-      .join('point_items', 'items.id', "=", "point_items.item_id")
-      .where('point_items.point_id', id)
-      .select('items.title')
+    const serializedPoint = {
+      ...point,
+      image_url: `http://192.168.1.9:3333/uploads/${point.image}`,
+    };
 
-    return response.json({ point, items})
+    const items = await knex("items")
+      .join("point_items", "items.id", "=", "point_items.item_id")
+      .where("point_items.point_id", id)
+      .select("items.title");
+
+    return response.json({ point: serializedPoint, items });
   }
 
-  async create(request: Request, response: Response){
+  async create(request: Request, response: Response) {
     const {
       name,
       email,
@@ -47,13 +59,13 @@ class PointsController {
       longitude,
       city,
       uf,
-      items
-    } = request.body
-  
-    const trx = await knex.transaction()
+      items,
+    } = request.body;
+
+    const trx = await knex.transaction();
 
     const point = {
-      image: "https://images.unsplash.com/photo-1528323273322-d81458248d40?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=400&q=60",
+      image: request.file.filename,
       name,
       email,
       whatsapp,
@@ -61,27 +73,30 @@ class PointsController {
       longitude,
       city,
       uf,
-    }
-  
-    const insertedIds = await trx('points').insert(point)
-    
-    const point_id = insertedIds[0]
-  
-    const pointItems = items.map((item_id: number) =>{
-      return {
-        item_id,
-        point_id
-      }
-    })
-  
-    await trx('point_items').insert(pointItems)
-    await trx.commit()
-  
+    };
+
+    const insertedIds = await trx("points").insert(point);
+
+    const point_id = insertedIds[0];
+
+    const pointItems = items
+      .split(",")
+      .map((item: string) => Number(item.trim()))
+      .map((item_id: number) => {
+        return {
+          item_id,
+          point_id,
+        };
+      });
+
+    await trx("point_items").insert(pointItems);
+    await trx.commit();
+
     return response.json({
       id: point_id,
-      ...point
-    })
+      ...point,
+    });
   }
 }
 
-export default PointsController
+export default PointsController;
